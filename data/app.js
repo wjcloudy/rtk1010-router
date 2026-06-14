@@ -359,10 +359,11 @@ function LoraTab({ st }) {
   return html`<div class="tabdiv" style="display:block"><div class="dash-box compact">
     <h3>LoRa radio (E220-900T22D)
       <span class=${'pill ' + (d.ok ? 'active' : 'muted')} style="float:right"><span class=dot></span>${msg || (cfg ? 'config mode' : 'transparent')}</span></h3>
-    <label class="toggle-row" style="max-width:360px;margin:.3rem 0 1rem">
-      <span class="toggle-label">Config mode — briefly drops the LoRa link to talk to the radio</span>
+    <label class="toggle-row" style="max-width:200px;margin:.3rem 0 .25rem">
+      <span class="toggle-label">Config mode</span>
       <span class="switch"><input type=checkbox checked=${cfg} onChange=${e => toggleCfg(e.target.checked)} /><span class="slider"></span></span>
     </label>
+    <p style="color:var(--text2);font-size:.75rem;margin:0 0 1rem">Turn on to read/edit the radio — briefly drops the LoRa link to enter config mode (M0+M1 high).</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 18px;opacity:${dis?.55:1}">
       <div>
         ${lbl('Baud Rate')}${sel('ubaud', UBP)}
