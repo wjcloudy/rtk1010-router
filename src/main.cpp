@@ -41,8 +41,8 @@
 #define GPS_RX_DEF    2
 #define LORA_TX_DEF   33             // J5 "Conn_GPS" header GPIO33 (ESP TX -> LoRa RX)
 #define LORA_RX_DEF   35             // J5 "Conn_GPS" header GPIO35 (ESP RX <- LoRa TX)
-#define E220_M0_DEF   34             // E220 mode/AUX pins on the remaining free J5 GPIOs
-#define E220_M1_DEF   36
+#define E220_MODE_DEF 38             // E220 mode pin: M0 and M1 tied together to one GPIO
+                                     // (LOW = transparent, HIGH = config — the only two modes used)
 #define E220_AUX_DEF  37
 
 #define UART_RX_RING  4096
@@ -59,7 +59,7 @@ uint32_t g_loraBaud = LORA_DEFAULT_BAUD;
 uint32_t g_gpsBaud  = GPS_DEFAULT_BAUD;
 int gpsTx = GPS_TX_DEF, gpsRx = GPS_RX_DEF;     // runtime-configurable UART pins
 int loraTx = LORA_TX_DEF, loraRx = LORA_RX_DEF;
-int e220M0 = E220_M0_DEF, e220M1 = E220_M1_DEF, e220Aux = E220_AUX_DEF;
+int e220Mode = E220_MODE_DEF, e220Aux = E220_AUX_DEF;  // M0+M1 share e220Mode
 volatile int e220Req = 0;            // 0 none, 1 read, 2 write — serviced in the router task
 volatile bool e220Busy = false, e220Ok = false;
 static uint8_t e220Regs[8] = {0};    // ADDH,ADDL,REG0(SPED),REG1(OPTION),REG2(CHAN),REG3(MODE),CRYPTH,CRYPTL
@@ -395,7 +395,7 @@ static void e220WaitAux(int timeoutMs)
 static void doE220(int req)
 {
     uint32_t saved = g_loraBaud;
-    digitalWrite(e220M1, HIGH); digitalWrite(e220M0, HIGH);   // mode 3 = configuration
+    digitalWrite(e220Mode, HIGH);                            // M0=M1=1 -> mode 3 = configuration
     e220WaitAux(100); delay(40);
     uart_set_baudrate(LORA_UART, 9600);
     uart_flush_input(LORA_UART);
@@ -411,7 +411,7 @@ static void doE220(int req)
     if(e220Ok) memcpy(e220Regs, resp + 3, 8);
 
     uart_set_baudrate(LORA_UART, saved);
-    digitalWrite(e220M0, LOW); digitalWrite(e220M1, LOW);     // back to mode 0 = transparent
+    digitalWrite(e220Mode, LOW);                             // M0=M1=0 -> mode 0 = transparent
     e220WaitAux(100); delay(20);
     uart_flush_input(LORA_UART);
 }
@@ -636,7 +636,7 @@ static void handleStatus()
         "\"gtx\":%d,\"grx\":%d,\"ltx\":%d,\"lrx\":%d,\"cdcconn\":%d,\"cdcavail\":%u,\"tcp\":%d,"
         "\"rtcmcount\":%u,\"rtcmtype\":%d,\"rtcmsats\":%d,\"rtcmcons\":%d,"
         "\"rtcmbyc\":[%d,%d,%d,%d,%d,%d,%d],\"gpsbyc\":[%d,%d,%d,%d,%d,%d],"
-        "\"em0\":%d,\"em1\":%d,\"eaux\":%d,"
+        "\"emode\":%d,\"eaux\":%d,"
         "\"cdcrx\":%u,\"cdctx\":%u,\"gpsrx\":%u,\"gpstx\":%u,\"lorarx\":%u,\"loratx\":%u}",
         modeName(g_mode), staSsid.c_str(), apSsid.c_str(),
         WiFi.localIP().toString().c_str(), (int)WiFi.RSSI(), (int)WiFi.softAPgetStationNum(),
@@ -647,7 +647,7 @@ static void handleStatus()
         rtcmSatByConst[0], rtcmSatByConst[1], rtcmSatByConst[2], rtcmSatByConst[3],
         rtcmSatByConst[4], rtcmSatByConst[5], rtcmSatByConst[6],
         gpsSatByConst[0], gpsSatByConst[1], gpsSatByConst[2], gpsSatByConst[3], gpsSatByConst[4], gpsSatByConst[5],
-        e220M0, e220M1, e220Aux,
+        e220Mode, e220Aux,
         cntCdcRx, cntCdcTx, cntGpsRx, cntGpsTx, cntLoraRx, cntLoraTx);
     server.send(200, "application/json", j);
 }
@@ -708,8 +708,7 @@ static void handleLoraCfg()
     auto setPin = [](const char* a, int& var, const char* key, bool out) {
         if(server.hasArg(a)) { int v = server.arg(a).toInt(); if(v >= 0 && v <= 46) { var = v; if(out) { pinMode(v, OUTPUT); digitalWrite(v, LOW); } else pinMode(v, INPUT); prefs.putInt(key, v); } }
     };
-    setPin("m0", e220M0, "e220m0", true);
-    setPin("m1", e220M1, "e220m1", true);
+    setPin("mode", e220Mode, "e220mode", true);   // M0+M1 combined
     setPin("aux", e220Aux, "e220aux", false);
 
     if(server.hasArg("write")) {
@@ -737,13 +736,13 @@ static void handleLoraCfg()
     char j[320];
     snprintf(j, sizeof(j),
         "{\"ok\":%d,\"addr\":%u,\"ubaud\":%d,\"par\":%d,\"air\":%d,\"sub\":%d,\"rn\":%d,\"pwr\":%d,"
-        "\"ch\":%d,\"freq\":\"%.3f\",\"rb\":%d,\"fx\":%d,\"lbt\":%d,\"wor\":%d,\"m0\":%d,\"m1\":%d,\"aux\":%d}",
+        "\"ch\":%d,\"freq\":\"%.3f\",\"rb\":%d,\"fx\":%d,\"lbt\":%d,\"wor\":%d,\"mode\":%d,\"aux\":%d}",
         e220Ok ? 1 : 0, addr,
         (e220Regs[2] >> 5) & 7, (e220Regs[2] >> 3) & 3, e220Regs[2] & 7,
         (e220Regs[3] >> 6) & 3, (e220Regs[3] >> 5) & 1, e220Regs[3] & 3,
         e220Regs[4], 850.125 + e220Regs[4], (e220Regs[5] >> 7) & 1, (e220Regs[5] >> 6) & 1,
         (e220Regs[5] >> 4) & 1, e220Regs[5] & 7,
-        e220M0, e220M1, e220Aux);
+        e220Mode, e220Aux);
     server.send(200, "application/json", j);
 }
 
@@ -930,8 +929,7 @@ void setup()
     gpsRx  = prefs.getInt("gpsrx", GPS_RX_DEF);
     loraTx = prefs.getInt("loratx", LORA_TX_DEF);
     loraRx = prefs.getInt("lorarx", LORA_RX_DEF);
-    e220M0 = prefs.getInt("e220m0", E220_M0_DEF);
-    e220M1 = prefs.getInt("e220m1", E220_M1_DEF);
+    e220Mode = prefs.getInt("e220mode", E220_MODE_DEF);
     e220Aux = prefs.getInt("e220aux", E220_AUX_DEF);
     staSsid = prefs.getString("stassid", staSsid);
     staPass = prefs.getString("stapass", staPass);
@@ -942,8 +940,7 @@ void setup()
     uartInit(LORA_UART, loraTx, loraRx, g_loraBaud);
 
     // E220 mode pins (default transparent: M0=0, M1=0).
-    pinMode(e220M0, OUTPUT); digitalWrite(e220M0, LOW);
-    pinMode(e220M1, OUTPUT); digitalWrite(e220M1, LOW);
+    pinMode(e220Mode, OUTPUT); digitalWrite(e220Mode, LOW);   // M0+M1 -> transparent
     if(e220Aux >= 0) pinMode(e220Aux, INPUT);
 
     WiFi.persistent(false);

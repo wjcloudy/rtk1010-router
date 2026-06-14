@@ -337,17 +337,17 @@ function LoraTab({ st }) {
   // Defaults so the form always renders (no auto-read on mount → never gets stuck and
   // doesn't interrupt the LoRa link on every visit). Mode pins prefill from /status.
   const DEF = { ok:false, addr:0, ch:18, ubaud:7, par:0, air:7, sub:0, pwr:2, rn:0, lbt:0, rb:0, fx:0, wor:3, key:0,
-                m0: st ? st.em0 : 34, m1: st ? st.em1 : 36, aux: st ? st.eaux : 37 };
+                mode: st ? st.emode : 38, aux: st ? st.eaux : 37 };
   const [cfg, setCfg] = useState(false);     // config-mode switch (gate before reading/editing)
   const [d, setD] = useState(DEF);
   const [msg, setMsg] = useState('');
   const f = useRef(DEF);
   const apply = (o) => { const m = { ...f.current, ...o }; f.current = m; setD(m); };
   const set = (k, v) => { f.current = { ...f.current, [k]: v }; setD({ ...f.current }); };
-  const read = async () => { setMsg('reading…'); try { const r = await gj('/loracfg'); apply(r); setMsg(r.ok ? 'read OK' : 'no response — check wiring & M0/M1/AUX pins'); } catch (e) { setMsg('request failed: ' + e.message); } };
+  const read = async () => { setMsg('reading…'); try { const r = await gj('/loracfg'); apply(r); setMsg(r.ok ? 'read OK' : 'no response — check wiring & mode/AUX pins'); } catch (e) { setMsg('request failed: ' + e.message); } };
   const write = async () => { setMsg('writing…'); const o = f.current; const p = new URLSearchParams({ write:1,
     addr:o.addr||0, ch:o.ch||0, air:o.air||0, ubaud:o.ubaud||0, par:o.par||0, pwr:o.pwr||0, sub:o.sub||0,
-    rn:o.rn?1:0, lbt:o.lbt?1:0, rb:o.rb?1:0, fx:o.fx?1:0, wor:o.wor||0, key:o.key||0, m0:o.m0, m1:o.m1, aux:o.aux });
+    rn:o.rn?1:0, lbt:o.lbt?1:0, rb:o.rb?1:0, fx:o.fx?1:0, wor:o.wor||0, key:o.key||0, mode:o.mode, aux:o.aux });
     try { const r = await gj('/loracfg?' + p); apply(r); setMsg(r.ok ? 'write OK' : 'no response — check wiring'); } catch (e) { setMsg('request failed: ' + e.message); } };
   const toggleCfg = (on) => { setCfg(on); if (on) read(); else setMsg('transparent mode'); };
   const dis = !cfg;
@@ -391,8 +391,8 @@ function LoraTab({ st }) {
       <button disabled=${dis} onClick=${write}>Write</button>
       <span style="color:var(--text2);font-size:.78rem">${dis ? 'Turn on Config mode to read/edit the radio.' : 'Read, edit, then Write. Each access briefly switches the radio to config mode.'}</span>
     </div>
-    ${lbl('Mode pins M0 / M1 / AUX (GPIO; AUX=-1 disables — also on the System tab)')}
-    <div style="display:flex;gap:8px;max-width:280px">${num('m0')}${num('m1')}${num('aux')}</div>
+    ${lbl('Mode pin (M0+M1 tied) / AUX (GPIO; AUX=-1 disables — also on the System tab)')}
+    <div style="display:flex;gap:8px;max-width:200px">${num('mode')}${num('aux')}</div>
   </div></div>`;
 }
 
@@ -414,7 +414,7 @@ function SystemTab({ st }) {
   const ports = () => {
     const g = (id) => document.getElementById(id).value;
     const p = new URLSearchParams({ gpsbaud:g('sgb'), lorabaud:g('slb'), gtx:g('sgtx'), grx:g('sgrx'), ltx:g('sltx'), lrx:g('slrx') });
-    const lp = new URLSearchParams({ m0:g('sm0'), m1:g('sm1'), aux:g('saux') }); // E220 mode pins (persisted by /loracfg)
+    const lp = new URLSearchParams({ mode:g('smode'), aux:g('saux') }); // E220 mode pin (M0+M1) + AUX (persisted by /loracfg)
     Promise.all([fetch('/ports?'+p), fetch('/loracfg?'+lp)]).then(()=>setMsg('ports + LoRa pins applied'));
   };
   const wifi = () => { const p = new URLSearchParams({ stassid:w.ss||'', stapass:w.sp||'', apssid:w.as||'', appass:w.ap||'' }); fetch('/wifi',{method:'POST',body:p}); setMsg('saved, rebooting…'); };
@@ -434,7 +434,7 @@ function SystemTab({ st }) {
         <label>LoRa baud</label><select id=slb>${LBAUDS.map(b=>html`<option selected=${b==st.lorabaud}>${b}</option>`)}</select>
         <label>GPS pins TX / RX</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id=sgtx type=number value=${st.gtx} style="width:100%;min-width:0"/><input id=sgrx type=number value=${st.grx} style="width:100%;min-width:0"/></div>
         <label>LoRa pins TX / RX</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id=sltx type=number value=${st.ltx} style="width:100%;min-width:0"/><input id=slrx type=number value=${st.lrx} style="width:100%;min-width:0"/></div>
-        <label>LoRa E220 mode pins M0 / M1 / AUX (GPIO; AUX=-1 disables)</label><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px"><input id=sm0 type=number value=${st.em0} style="width:100%;min-width:0"/><input id=sm1 type=number value=${st.em1} style="width:100%;min-width:0"/><input id=saux type=number value=${st.eaux} style="width:100%;min-width:0"/></div>
+        <label>LoRa E220 mode pin (M0+M1 tied) / AUX (GPIO; AUX=-1 disables)</label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><input id=smode type=number value=${st.emode} style="width:100%;min-width:0"/><input id=saux type=number value=${st.eaux} style="width:100%;min-width:0"/></div>
         <button onClick=${ports} style="margin-top:.6rem">Apply</button></div>
 
       <div class="dash-box compact"><h3>WiFi</h3>

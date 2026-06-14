@@ -31,7 +31,7 @@ preact + chart.js UI in [`data/`](data/) served from SPIFFS.
   and restore-to-defaults. Free-form command box + live reply log.
 - **E220 LoRa config**: address, channel/frequency, air rate, UART baud, parity, power,
   packet size, WOR cycle, LBT, channel/packet RSSI, fixed/transparent mode, encryption key,
-  and the M0/M1/AUX mode pins — read/write over a config-mode switch.
+  and the mode pin (M0+M1 tied) + AUX — read/write over a config-mode switch.
 - **Live consoles** for the GPS (NMEA), LoRa (RTCM, hex) and host-in streams.
 - **OTA** app + filesystem updates over WiFi, browser firmware upload, device diagnostics
   (uptime, free/min heap), and a raw **TCP NMEA/RTCM server on `:10110`** (no DTR needed).
@@ -49,7 +49,7 @@ defaults and are **runtime-configurable from the web UI** (saved to NVS).
 | RTK-1010 GNSS | UART1 | TX `GPIO1` / RX `GPIO2` | onboard, via R3/R4 |
 | GNSS enable | — | `GPIO4` (active high) | also used to reboot the module |
 | LoRa (E220) data | UART0 | TX `GPIO33` / RX `GPIO35` | J5 "Conn_GPS" header (no soldering) |
-| E220 mode pins | — | M0 `GPIO34` / M1 `GPIO36` / AUX `GPIO37` | free J5 GPIOs; AUX `-1` disables |
+| E220 mode pin | — | M0+M1 (tied) `GPIO38` / AUX `GPIO37` | M0 and M1 share one GPIO; AUX `-1` disables |
 
 USB-CDC (`Serial`) is the host data channel — there is **no serial console**; status lives
 on the web page.
