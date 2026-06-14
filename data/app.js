@@ -191,6 +191,85 @@ function Console({ src, label, defaultHex }) {
     <pre ref=${box} style="height:200px;overflow:auto;background:var(--bg);padding:8px;border-radius:8px;font-family:var(--mono);font-size:12px;white-space:pre-wrap;word-break:break-all;margin:0">${txt}</pre></div>`;
 }
 
+// ---- routing / comm-path diagram ----
+// Mirrors the firmware router loop (main.cpp): both GPS & LoRa are always decoded,
+// the mode only changes which links are *forwarded*. Green = open & flowing, muted
+// dashed + ✕ = blocked in this mode. USB and TCP share the one "host" endpoint.
+function CommDiagram({ mode, gB, lB, st }) {
+  const MODES = { gps:'USB ⇄ GPS', lora:'USB ⇄ LoRa', rover:'RTK Rover', hybrid:'Hybrid' };
+  const m = mode || 'gps';
+  const open = {
+    gpsOut:   m==='gps' || m==='rover' || m==='hybrid', // GPS NMEA -> host
+    hostGps:  m==='gps' || m==='hybrid',                // host commands -> GPS
+    loraOut:  m==='lora',                               // LoRa RTCM -> host
+    hostLora: m==='lora',                               // host -> LoRa
+    rtcm:     m==='rover' || m==='hybrid',              // LoRa RTCM -> GPS (corrections)
+  };
+  const dot = (on) => on ? 'var(--green)' : 'var(--text3)';
+  // one directional link: line + marker arrowhead + label, plus a ✕ badge when blocked
+  const edge = (x1,y1,x2,y2,isOpen,label,lx,ly) => {
+    const mx = (x1+x2)/2, my = (y1+y2)/2;
+    return html`<g>
+      <line x1=${x1} y1=${y1} x2=${x2} y2=${y2} class=${'comm-path '+(isOpen?'open':'blocked')} marker-end=${isOpen?'url(#ahOpen)':'url(#ahBlk)'} />
+      <text x=${lx} y=${ly} class=${'comm-label '+(isOpen?'open':'blocked')}>${label}</text>
+      ${!isOpen && html`<g>
+        <circle cx=${mx} cy=${my} r="7.5" class="comm-x-bg" />
+        <line x1=${mx-3.5} y1=${my-3.5} x2=${mx+3.5} y2=${my+3.5} class="comm-x" />
+        <line x1=${mx-3.5} y1=${my+3.5} x2=${mx+3.5} y2=${my-3.5} class="comm-x" /></g>`}</g>`;
+  };
+  return html`<div class="dash-box compact">
+    <h3>Signal routing <span style="float:right;font-weight:400;color:var(--text3)">${MODES[m] || m}</span></h3>
+    <div class="comm-diagram">
+    <svg viewBox="0 0 380 290" role="img" aria-label=${'Comm routing for ' + (MODES[m] || m) + ' mode'}>
+      <defs>
+        <marker id="ahOpen" markerWidth="9" markerHeight="9" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L6,3 L0,6 Z" style="fill:var(--green)" /></marker>
+        <marker id="ahBlk" markerWidth="9" markerHeight="9" refX="5.5" refY="3" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L6,3 L0,6 Z" style="fill:var(--text3);opacity:.55" /></marker>
+      </defs>
+
+      ${edge(134,42,  250,112, open.gpsOut,   'NMEA out', 192, 60)}
+      ${edge(250,132, 134,64,  open.hostGps,  'commands', 192, 115)}
+      ${edge(134,214, 250,158, open.loraOut,  'RTCM raw', 192, 170)}
+      ${edge(250,178, 134,244, open.hostLora, 'uplink',   192, 228)}
+
+      <g>
+        <line x1="74" y1="204" x2="74" y2="88" class=${'comm-path '+(open.rtcm?'open':'blocked')} marker-end=${open.rtcm?'url(#ahOpen)':'url(#ahBlk)'} />
+        <text transform="rotate(-90 44 146)" x="44" y="146" class=${'comm-label '+(open.rtcm?'open':'blocked')}>RTCM corr.</text>
+        ${!open.rtcm && html`<g>
+          <circle cx="74" cy="146" r="7.5" class="comm-x-bg" />
+          <line x1="70.5" y1="142.5" x2="77.5" y2="149.5" class="comm-x" />
+          <line x1="70.5" y1="149.5" x2="77.5" y2="142.5" class="comm-x" /></g>`}
+      </g>
+
+      <g>
+        <rect x="14" y="22" width="120" height="62" rx="11" class="comm-node" />
+        <circle cx="122" cy="34" r="4" style=${'fill:'+dot(gB>0)} />
+        <text x="74" y="49" text-anchor="middle" class="comm-node-title">GPS</text>
+        <text x="74" y="67" text-anchor="middle" class="comm-node-sub">RTK-1010</text>
+      </g>
+      <g>
+        <rect x="14" y="204" width="120" height="62" rx="11" class="comm-node" />
+        <circle cx="122" cy="216" r="4" style=${'fill:'+dot(lB>0)} />
+        <text x="74" y="231" text-anchor="middle" class="comm-node-title">LoRa</text>
+        <text x="74" y="249" text-anchor="middle" class="comm-node-sub">E220 · RTCM</text>
+      </g>
+      <g>
+        <rect x="250" y="86" width="116" height="118" rx="11" class="comm-node" />
+        <text x="308" y="110" text-anchor="middle" class="comm-node-title">HOST</text>
+        <circle cx="276" cy="138" r="4" style=${'fill:'+dot(st && st.cdcconn)} />
+        <text x="288" y="142" class="comm-node-sub">USB ${st && st.cdcconn ? '· DTR' : '· idle'}</text>
+        <circle cx="276" cy="162" r="4" style=${'fill:'+dot(st && st.tcp)} />
+        <text x="288" y="166" class="comm-node-sub">TCP ${st && st.tcp ? '· client' : '· idle'}</text>
+      </g>
+    </svg>
+    </div>
+    <div class="comm-legend">
+      <span><i style="border-top:2.4px solid var(--green)"></i> Open</span>
+      <span><i style="border-top:2.4px dashed var(--text3);opacity:.7"></i> Blocked</span>
+    </div>
+    <p style="color:var(--text3);font-size:.66rem;margin:.35rem 0 0">Only the green paths are forwarded in the active mode — both radios are always decoded. Dots = live link state.</p>
+  </div>`;
+}
+
 // ---- Dashboard ----
 function Dashboard({ st, hist, sats, posHist, onResetPos }) {
   if (!st) return html`<div class="tabdiv" style="display:block">Loading…</div>`;
@@ -238,6 +317,7 @@ function Dashboard({ st, hist, sats, posHist, onResetPos }) {
         <tr><td>Frames</td><td>${st.rtcmcount} · last type ${st.rtcmtype||'—'}</td></tr>
         <tr><td>Sats</td><td>${st.rtcmsats} total / ${st.rtcmcons} cons</td></tr>
         <tr><td>By const</td><td>${brk(st.rtcmbyc, RNAMES) || '—'}</td></tr></table></div>
+      <${CommDiagram} mode=${st.mode} gB=${gB} lB=${lB} st=${st} />
     </div>
 
     <div style="margin-top:1rem"><${PosScatter} pts=${posHist} onReset=${onResetPos} /></div>
